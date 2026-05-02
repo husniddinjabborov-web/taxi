@@ -10,7 +10,7 @@ export default function MapPage() {
   const watchIdRef = useRef<number | null>(null);
   const LRef = useRef<any>(null);
 
-  const [mounted, setMounted] = useState(false);
+  const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -18,16 +18,14 @@ export default function MapPage() {
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-
-    let map: any = null;
+    // HTML va BODY ni to'liq balandlikka chiqarish
+    document.documentElement.style.height = "100%";
+    document.body.style.height = "100%";
+    document.body.style.margin = "0";
+    document.body.style.padding = "0";
 
     const loadLeaflet = async () => {
-      // CSS ni head ga qo'shamiz
+      // CSS
       if (!document.getElementById("leaflet-css")) {
         const link = document.createElement("link");
         link.id = "leaflet-css";
@@ -36,22 +34,23 @@ export default function MapPage() {
         document.head.appendChild(link);
       }
 
-      // Leaflet JS ni yuklash
-      if (!window.L) {
-        await new Promise<void>((resolve) => {
+      // JS
+      if (!(window as any).L) {
+        await new Promise<void>((resolve, reject) => {
           const script = document.createElement("script");
           script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
           script.onload = () => resolve();
+          script.onerror = () => reject();
           document.head.appendChild(script);
         });
       }
 
-      const L = window.L;
+      const L = (window as any).L;
       LRef.current = L;
 
       if (!mapRef.current || mapInstanceRef.current) return;
 
-      map = L.map(mapRef.current, {
+      const map = L.map(mapRef.current, {
         center: [41.2995, 69.2401],
         zoom: 13,
         zoomControl: false,
@@ -65,9 +64,10 @@ export default function MapPage() {
       L.control.zoom({ position: "topright" }).addTo(map);
 
       mapInstanceRef.current = map;
+      setReady(true);
     };
 
-    loadLeaflet();
+    loadLeaflet().catch(console.error);
 
     return () => {
       if (watchIdRef.current !== null) {
@@ -78,7 +78,7 @@ export default function MapPage() {
         mapInstanceRef.current = null;
       }
     };
-  }, [mounted]);
+  }, []);
 
   const updateMap = useCallback(async (lat: number, lng: number, acc: number) => {
     const L = LRef.current;
@@ -93,9 +93,9 @@ export default function MapPage() {
       html: `<div style="
         width:18px;height:18px;
         background:#2563eb;
-        border:3px solid #fff;
+        border:3px solid white;
         border-radius:50%;
-        box-shadow:0 0 0 6px rgba(37,99,235,0.2),0 2px 8px rgba(0,0,0,0.3);
+        box-shadow:0 0 0 6px rgba(37,99,235,0.25),0 2px 8px rgba(0,0,0,0.4);
       "></div>`,
       iconSize: [18, 18],
       iconAnchor: [9, 9],
@@ -122,7 +122,6 @@ export default function MapPage() {
 
     map.setView([lat, lng], Math.max(map.getZoom(), 17), { animate: true });
 
-    // Nominatim — bepul reverse geocoding
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
@@ -157,7 +156,6 @@ export default function MapPage() {
         const { latitude: lat, longitude: lng, accuracy: acc } = pos.coords;
         setStatus("success");
         updateMap(lat, lng, acc);
-
         if (acc <= 20) {
           navigator.geolocation.clearWatch(id);
           watchIdRef.current = null;
@@ -165,16 +163,9 @@ export default function MapPage() {
       },
       (err) => {
         setStatus("error");
-        switch (err.code) {
-          case 1:
-            setErrorMsg("Ruxsat berilmadi. Brauzerda joylashuv ruxsatini bering.");
-            break;
-          case 2:
-            setErrorMsg("GPS signal topilmadi. Ochiq joyda urinib ko'ring.");
-            break;
-          default:
-            setErrorMsg("Vaqt tugadi. Qayta urinib ko'ring.");
-        }
+        if (err.code === 1) setErrorMsg("Ruxsat berilmadi. Brauzerda joylashuv ruxsatini yoqing.");
+        else if (err.code === 2) setErrorMsg("GPS signal topilmadi. Ochiq havoda urinib ko'ring.");
+        else setErrorMsg("Vaqt tugadi. Qayta urinib ko'ring.");
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
     );
@@ -184,96 +175,78 @@ export default function MapPage() {
 
   const accInfo = (() => {
     if (!accuracy) return null;
-    if (accuracy <= 20) return { label: `±${Math.round(accuracy)}m — Juda aniq ✅`, cls: "bg-green-50 border-green-200 text-green-700" };
-    if (accuracy <= 60) return { label: `±${Math.round(accuracy)}m — Aniq`, cls: "bg-blue-50 border-blue-200 text-blue-700" };
-    if (accuracy <= 200) return { label: `±${Math.round(accuracy)}m — Aniqlanmoqda...`, cls: "bg-yellow-50 border-yellow-200 text-yellow-700" };
-    return { label: `±${Math.round(accuracy)}m — GPS kutilmoqda...`, cls: "bg-orange-50 border-orange-200 text-orange-700" };
+    if (accuracy <= 20) return { label: `±${Math.round(accuracy)}m — Juda aniq ✅`, bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d" };
+    if (accuracy <= 60) return { label: `±${Math.round(accuracy)}m — Aniq`, bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" };
+    if (accuracy <= 300) return { label: `±${Math.round(accuracy)}m — Aniqlanmoqda...`, bg: "#fefce8", border: "#fde68a", color: "#a16207" };
+    return { label: `±${Math.round(accuracy)}m — GPS kutilmoqda...`, bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" };
   })();
 
-  if (!mounted) return null;
-
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden">
-      {/* Xarita div — to'liq balandlik */}
-      <div
-        ref={mapRef}
-        style={{ flex: 1, width: "100%", minHeight: 0 }}
-      />
+    <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", overflow: "hidden", fontFamily: "sans-serif" }}>
+
+      {/* Xarita */}
+      <div ref={mapRef} style={{ flex: 1, minHeight: 0, width: "100%" }} />
 
       {/* Pastki panel */}
-      <div className="bg-white border-t border-gray-200 shadow-2xl px-4 py-4 space-y-3 z-[1000]">
+      <div style={{ background: "white", borderTop: "1px solid #e5e7eb", boxShadow: "0 -4px 24px rgba(0,0,0,0.1)", padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+
+        {!ready && (
+          <div style={{ textAlign: "center", color: "#9ca3af", fontSize: 14 }}>🗺️ Xarita yuklanmoqda...</div>
+        )}
 
         {accInfo && (
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium ${accInfo.cls}`}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: `1px solid ${accInfo.border}`, background: accInfo.bg, color: accInfo.color, fontSize: 14, fontWeight: 500 }}>
             🎯 {accInfo.label}
             {watchIdRef.current !== null && (
-              <svg className="animate-spin w-4 h-4 ml-auto shrink-0" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
+              <span style={{ marginLeft: "auto", display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span>
             )}
           </div>
         )}
 
         {status === "success" && address && (
-          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl">
-            <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-0.5">📍 Manzil</p>
-            <p className="text-sm text-gray-800 leading-snug">{address}</p>
+          <div style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #e5e7eb", background: "#f9fafb" }}>
+            <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>📍 Manzil</div>
+            <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.5 }}>{address}</div>
             {coords && (
-              <p className="text-xs text-gray-400 mt-0.5">
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
                 {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
-              </p>
+              </div>
             )}
           </div>
         )}
 
         {status === "error" && (
-          <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
-            <p className="text-sm text-red-600">⚠️ {errorMsg}</p>
+          <div style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 13, color: "#dc2626" }}>
+            ⚠️ {errorMsg}
           </div>
         )}
 
         <button
           onClick={handleLocate}
-          className={`
-            w-full h-14 rounded-2xl font-semibold text-base
-            flex items-center justify-center gap-2
-            transition-all duration-150 select-none active:scale-95
-            ${status === "loading" && !accuracy
-              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-              : status === "success"
-              ? "bg-green-500 hover:bg-green-600 text-white"
-              : "bg-blue-600 hover:bg-blue-700 text-white"
-            }
-          `}
+          style={{
+            width: "100%",
+            height: 56,
+            borderRadius: 16,
+            border: "none",
+            cursor: status === "loading" && !accuracy ? "not-allowed" : "pointer",
+            fontSize: 16,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            transition: "all 0.15s",
+            background: status === "loading" && !accuracy ? "#e5e7eb" : status === "success" ? "#22c55e" : "#2563eb",
+            color: status === "loading" && !accuracy ? "#9ca3af" : "white",
+          }}
         >
-          {status === "loading" && !accuracy ? (
-            <>
-              <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-              GPS qidirilmoqda...
-            </>
-          ) : status === "success" ? (
-            <>✅ Yangilash</>
-          ) : (
-            <>📍 Joylashuvimni aniqla</>
-          )}
+          {status === "loading" && !accuracy
+            ? "⏳ GPS qidirilmoqda..."
+            : status === "success"
+            ? "✅ Yangilash"
+            : "📍 Joylashuvimni aniqla"}
         </button>
-
-        {status === "idle" && (
-          <p className="text-xs text-center text-gray-400">
-            💡 Telefonda ishlatganda GPS orqali aniqroq joylashuvni ko'rsatadi
-          </p>
-        )}
       </div>
     </div>
   );
-}
-
-declare global {
-  interface Window {
-    L: any;
-  }
 }
